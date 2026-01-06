@@ -3,40 +3,74 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from prophet import Prophet
-from datetime import timedelta
+from datetime import timedelta, datetime
 import pickle
 import os
 
-# ------------------ PAGE CONFIG ------------------ #
+# PAGE CONFIG
 st.set_page_config(
     page_title="Rossmann Sales Forecasting",
     page_icon="📊",
     layout="wide"
 )
 
-# ------------------ DATA LOADING ------------------ #
+# DATA LOADING
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/processed/rossmann_prepared.csv")
-    df["Date"] = pd.to_datetime(df["Date"])
-    return df
+    try:
+        df = pd.read_csv("data/processed/rossmann_prepared.csv")
+        df["Date"] = pd.to_datetime(df["Date"])
+        return df
+    except FileNotFoundError:
+        # Demo mode for Streamlit Cloud
+        st.info("📊 Demo Mode: Generated sample data (local data not available)")
+        np.random.seed(42)
+        
+        dates = pd.date_range(start="2013-01-01", end="2015-07-31", freq="D")
+        stores = list(range(1, 6))
+        
+        data = []
+        for store in stores:
+            trend = 0
+            for date in dates:
+                trend += np.random.normal(0, 0.5)
+                seasonality = 50 * np.sin(2 * np.pi * (date - dates[0]).days / 365)
+                noise = np.random.normal(0, 50)
+                sales = 2000 + trend + seasonality + noise
+                sales = max(500, sales)
+                
+                data.append({
+                    'Date': date,
+                    'Store': store,
+                    'Sales': sales,
+                    'Customers': int(sales / 5),
+                    'Promo': np.random.choice([0, 1], p=[0.7, 0.3]),
+                    'Month': date.month,
+                    'DayOfWeek': date.dayofweek,
+                    'SchoolHoliday': 0,
+                    'Quarter': (date.month - 1) // 3 + 1,
+                    'Sales_lag_7': 0,
+                    'Sales_lag_30': 0,
+                    'Sales_rolling_7': 0
+                })
+        
+        df = pd.DataFrame(data)
+        return df.sort_values('Date').reset_index(drop=True)
 
 df = load_data()
 stores = sorted(df["Store"].unique())
 
-# ------------------ SIDEBAR NAVIGATION ------------------ #
+# SIDEBAR NAVIGATION
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
     ["📊 Forecast", "📈 Model Comparison", "ℹ️ About"]
 )
 
-# =========================================================
 # PAGE 1: FORECAST
-# =========================================================
 if page == "📊 Forecast":
     st.title("📊 Rossmann Store Sales Forecasting")
-    st.markdown("Simple demo using Prophet to forecast daily sales for the next 90 days.")
+    st.markdown("Interactive demo using Prophet to forecast daily sales.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -46,9 +80,8 @@ if page == "📊 Forecast":
 
     store_data = df[df["Store"] == store_id].sort_values("Date")
 
-    # -------- Historical Sales Plot -------- #
+    # Historical Sales
     st.subheader(f"Store {store_id} – Historical Sales")
-
     fig_hist, ax_hist = plt.subplots(figsize=(12, 4))
     ax_hist.plot(store_data["Date"], store_data["Sales"], color="tab:blue", linewidth=1.5)
     ax_hist.set_xlabel("Date")
@@ -56,9 +89,9 @@ if page == "📊 Forecast":
     ax_hist.grid(alpha=0.3)
     st.pyplot(fig_hist)
 
-    # -------- Forecast with Prophet -------- #
+    # Forecast
     st.subheader(f"Store {store_id} – {forecast_days}-Day Forecast (Prophet)")
-
+    
     prophet_df = store_data[["Date", "Sales"]].rename(columns={"Date": "ds", "Sales": "y"})
     model = Prophet(yearly_seasonality=True, weekly_seasonality=True)
     model.fit(prophet_df)
@@ -98,27 +131,23 @@ if page == "📊 Forecast":
         st.metric("Expected change", f"{change:+.1f}%")
 
 
-# =========================================================
 # PAGE 2: MODEL COMPARISON
-# =========================================================
 elif page == "📈 Model Comparison":
     st.title("📈 Model Comparison: Prophet vs ARIMA vs LSTM")
 
     st.markdown(
         """
-        This page compares three forecasting approaches on the same store:
+        This page shows the performance comparison of three forecasting models:
 
-        - **Prophet** – Flexible business time-series model (trend + seasonality)
-        - **ARIMA(1,1,1)** – Classical statistical time-series model
-        - **LSTM** – Deep learning model for sequences
+        - **Prophet** – Flexible business time‑series model
+        - **ARIMA(1,1,1)** – Classical statistical model
+        - **LSTM** – Deep learning approach
         """
     )
 
     results_path = "models/results_store_1.pkl"
 
-    if not os.path.exists(results_path):
-        st.error("Trained model results not found. Please run `python src/forecast_models.py` first.")
-    else:
+    if os.path.exists(results_path):
         with open(results_path, "rb") as f:
             results = pickle.load(f)
 
@@ -146,19 +175,16 @@ elif page == "📈 Model Comparison":
         st.markdown("### 📌 Interpretation")
         st.markdown(
             """
-            - **MAE**: Average absolute error in sales units (how many € off on average).  
-            - **RMSE**: Penalizes larger errors more strongly.  
-            - **MAPE**: Percentage error; easier to interpret across scales.
-
-            In many business settings, **MAPE** is the most intuitive metric
-            because it answers: *“On average, how wrong are we in percentage terms?”*
+            - **MAE**: Average absolute error in sales units
+            - **RMSE**: Penalizes larger errors more heavily
+            - **MAPE**: Percentage error (easiest to interpret)
             """
         )
+    else:
+        st.warning("⚠️ Pre-trained models not available. Download from GitHub and run training locally.")
 
 
-# =========================================================
 # PAGE 3: ABOUT
-# =========================================================
 elif page == "ℹ️ About":
     st.title("ℹ️ About This Project")
 
@@ -166,67 +192,59 @@ elif page == "ℹ️ About":
         """
         ### 🧠 Project Overview
 
-        This app demonstrates an **end-to-end sales forecasting system** using the
-        [Rossmann Store Sales](https://www.kaggle.com/competitions/rossmann-store-sales) dataset from Kaggle.  
-        It forecasts daily sales for individual stores and compares different forecasting models.
+        End-to-end sales forecasting system for retail analytics using the 
+        Rossmann Store Sales dataset (Kaggle competition).
 
         ### 📊 Business Problem
 
-        Retailers need to plan:
-
-        - Staffing  
-        - Inventory  
-        - Promotions  
-
-        Accurate **90-day sales forecasts** help reduce stockouts, overstock, and scheduling issues.
+        Retailers need accurate sales forecasts to:
+        - Optimize staffing schedules
+        - Manage inventory levels
+        - Plan promotional campaigns
+        - Reduce stockouts and overstock
 
         ### 🧪 Models Used
 
-        - **Prophet** – Captures trend + weekly/yearly seasonality with interpretable components.  
-        - **ARIMA(1,1,1)** – Classical linear time-series model.  
-        - **LSTM** – Neural network for sequence data, capturing non-linear patterns.
-
-        Each model has trade-offs:
-
-        - Prophet: Great interpretability, fast to train.  
-        - ARIMA: Simple, well-understood, but limited with complex patterns.  
-        - LSTM: Powerful but needs more data, tuning, and compute.
+        - **Prophet** – Captures trend + seasonality with interpretability
+        - **ARIMA(1,1,1)** – Classical statistical time-series model
+        - **LSTM** – Deep learning for sequence patterns
 
         ### 📂 Data Source
 
-        - **Dataset:** Rossmann Store Sales (Kaggle Competition)  
-        - **Link:** https://www.kaggle.com/competitions/rossmann-store-sales  
-        - **Note:** Raw CSV files are **not** included in this project to respect Kaggle's data rules.  
-          Users should download the data directly from Kaggle.
+        **Rossmann Store Sales (Kaggle):**  
+        https://www.kaggle.com/competitions/rossmann-store-sales
+
+        ⚠️ Raw data NOT included (respects Kaggle's terms). Download from Kaggle yourself.
 
         ### 🏗️ Tech Stack
 
-        - Python, pandas, numpy  
-        - Prophet, statsmodels (ARIMA), TensorFlow/Keras (LSTM)  
-        - Streamlit for the dashboard  
-        - Git/GitHub for version control  
+        - Python, pandas, numpy
+        - Prophet, statsmodels (ARIMA), TensorFlow/Keras (LSTM)
+        - Streamlit for dashboard
+        - Git/GitHub for version control
 
         ### ⚠️ Limitations
 
-        - Models are trained on a **single store** for comparison in this demo.  
-        - No hyperparameter tuning yet (baseline configurations).  
-        - No production monitoring or scheduled retraining implemented.  
-        - Evaluation is performed on historical hold-out periods only.
+        - Models trained on Store 1 only (baseline comparison)
+        - No hyperparameter tuning (using defaults)
+        - Evaluation on historical hold-out periods
+        - Demo mode uses synthetic data for Cloud deployment
 
-        ### 🚀 Possible Extensions
+        ### 🚀 Future Work
 
-        - Train and compare models across *all* 1,115 stores.  
-        - Add hyperparameter tuning (Prophet, ARIMA, LSTM).  
-        - Implement automatic model selection per store.  
-        - Add anomaly detection for sudden drops/spikes in sales.  
-        - Integrate with a backend API and scheduling for regular retraining.  
+        - Multi-store forecasting
+        - Hyperparameter tuning
+        - API integration
+        - Docker deployment
+        - Advanced architectures (Transformers, N-BEATS)
 
-        ---
+        ### 📞 Questions?
 
-        Created as an educational, portfolio-ready time-series forecasting project.
+        **GitHub:** https://github.com/sarthakshivaay/sales-forecasting-system  
+        **Author:** Sarthak Tyagi  
+        **LinkedIn:** https://www.linkedin.com/in/sarthakshivaay
         """
     )
 
-# ------------------ FOOTER ------------------ #
 st.sidebar.markdown("---")
-st.sidebar.caption("Created by Sarthak Tyagi · January 2026")
+st.sidebar.caption("Rossmann Sales Forecasting · Jan 2026")
