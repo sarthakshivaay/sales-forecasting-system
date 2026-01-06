@@ -1,0 +1,21 @@
+# Data files - never commit
+data/raw/*.csv
+data/raw/*.zip
+data/processed/*.csv
+
+# Keep directories but empty
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Models
+models/*.pkl
+
+# IDE
+.vscode/
+.idea/
