@@ -3,7 +3,7 @@
 End‑to‑end time‑series forecasting project using the Rossmann Store Sales dataset (Kaggle) to predict retail sales for individual stores and compare multiple forecasting models.
 
 **GitHub:** https://github.com/sarthakshivaay/sales-forecasting-system  
-**Live Demo:** [Streamlit Cloud](#deployment) *(coming soon)*
+**Live Demo:** https://sales-forecasting-system-48aguxznlnrn2ewhjkwove.streamlit.app/
 
 ---
 
