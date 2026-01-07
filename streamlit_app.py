@@ -5,12 +5,18 @@ import matplotlib.pyplot as plt
 from prophet import Prophet
 import os
 
+
+# =============================================================================
+# Page config
+# =============================================================================
+
 st.set_page_config(
     page_title="Rossmann Store Sales Forecasting",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # =============================================================================
 # Store metadata labels
@@ -28,6 +34,7 @@ ASSORTMENT_LABELS = {
     "b": "b – extra assortment",
     "c": "c – extended assortment",
 }
+
 
 # =============================================================================
 # Utility functions
@@ -183,6 +190,7 @@ def get_store_info(df, store_id):
 df = load_data()
 stores = sorted(df["Store"].unique())
 
+
 # =============================================================================
 # Sidebar navigation
 # =============================================================================
@@ -200,6 +208,7 @@ page = st.sidebar.radio(
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Rossmann Store Sales Forecasting • RMSPE • Multi-store")
+
 
 # =============================================================================
 # PAGE 1: Forecast
@@ -330,6 +339,7 @@ if page == "📊 Forecast":
         else:
             st.warning("Not enough historical data to train Prophet for this store.")
 
+
 # =============================================================================
 # PAGE 2: Model Comparison
 # =============================================================================
@@ -399,6 +409,7 @@ elif page == "📈 Model Comparison":
         "features such as lags, rolling means and store metadata."
     )
 
+
 # =============================================================================
 # PAGE 3: Business Impact
 # =============================================================================
@@ -466,6 +477,7 @@ elif page == "💡 Business Impact":
         "into potential savings in inventory, labour and promotion planning."
     )
 
+
 # =============================================================================
 # PAGE 4: Promotions & Holidays
 # =============================================================================
@@ -501,7 +513,8 @@ elif page == "🎁 Promotions & Holidays":
             with c1b:
                 st.metric("Non-promo days avg sales", f"€{non_promo_avg:.0f}")
 
-            fig, ax = plt.subplots(figsize=(6, 3))
+            # Bigger chart here
+            fig, ax = plt.subplots(figsize=(8, 5))
             cats = ["Non-promo", "Promo"]
             vals = [non_promo_avg, promo_avg]
             bars = ax.bar(cats, vals, color=["#95e1d3", "#f38181"], edgecolor="black")
@@ -532,7 +545,8 @@ elif page == "🎁 Promotions & Holidays":
             with c2b:
                 st.metric("Non-holiday avg sales", f"€{non_hol_avg:.0f}")
 
-            fig, ax = plt.subplots(figsize=(6, 3))
+            # Bigger chart here
+            fig, ax = plt.subplots(figsize=(8, 5))
             cats = ["Non-holiday", "Holiday"]
             vals = [non_hol_avg, hol_avg]
             bars = ax.bar(cats, vals, color=["#a8e6cf", "#ffd3b6"], edgecolor="black")
@@ -548,6 +562,7 @@ elif page == "🎁 Promotions & Holidays":
     st.subheader("Combined promo + holiday patterns")
 
     if set(["Promo", "StateHoliday"]).issubset(open_days.columns):
+
         def mean_or_zero(mask):
             sub = open_days[mask]
             return sub["Sales"].mean() if len(sub) else 0
@@ -559,7 +574,9 @@ elif page == "🎁 Promotions & Holidays":
 
         cats = ["Regular", "Promo only", "Holiday only", "Promo + Holiday"]
         vals = [regular, promo_only, hol_only, both]
-        fig, ax = plt.subplots(figsize=(8, 4))
+
+        # Bigger combined chart here
+        fig, ax = plt.subplots(figsize=(12, 6))
         colors = ["#dfe6e9", "#f38181", "#ffd3b6", "#ff7675"]
         bars = ax.bar(cats, vals, color=colors, edgecolor="black")
         ax.set_ylabel("Average sales (€)")
@@ -571,6 +588,7 @@ elif page == "🎁 Promotions & Holidays":
     st.caption(
         "Use these patterns to tune promotion timing and staffing around key periods."
     )
+
 
 # =============================================================================
 # PAGE 5: About
