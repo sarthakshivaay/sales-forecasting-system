@@ -1,111 +1,162 @@
+import os
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
-class RossmannPipeline:
-    def __init__(self):
-        self.train_path = 'data/raw/train.csv'
-        self.store_path = 'data/raw/store.csv'
-        self.output_path = 'data/processed/rossmann_prepared.csv'
-    
-    def load_data(self):
-        """Load raw Rossmann data"""
-        print("[1/5] Loading data...")
-        train = pd.read_csv(self.train_path)
-        stores = pd.read_csv(self.store_path)
-        df = train.merge(stores, on='Store', how='left')
-        print(f"✓ Loaded {len(df):,} records from {df['Store'].nunique()} stores")
-        return df
-    
-    def clean_data(self, df):
-        """Clean and prepare data"""
-        print("[2/5] Cleaning data...")
-        
-        # Convert Date to datetime
-        df['Date'] = pd.to_datetime(df['Date'])
-        
-        # Remove days when store was closed
-        df = df[df['Open'] == 1].copy()
-        
-        # Handle missing values
-        df['CompetitionDistance'].fillna(df['CompetitionDistance'].median(), inplace=True)
-        df['Promo2SinceWeek'].fillna(0, inplace=True)
-        df['Promo2SinceYear'].fillna(0, inplace=True)
-        
-        print(f"✓ Cleaned data: {len(df):,} records")
-        return df
-    
-    def engineer_features(self, df):
-        """Create time-based features"""
-        print("[3/5] Engineering features...")
-        
-        df = df.copy()
-        df = df.sort_values('Date').reset_index(drop=True)
-        
-        # Time features
-        df['Year'] = df['Date'].dt.year
-        df['Month'] = df['Date'].dt.month
-        df['Week'] = df['Date'].dt.isocalendar().week
-        df['DayOfWeek'] = df['Date'].dt.dayofweek
-        df['Quarter'] = df['Date'].dt.quarter
-        df['DayOfMonth'] = df['Date'].dt.day
-        
-        # Store type encoding
-        df['StoreType_A'] = (df['StoreType'] == 'a').astype(int)
-        df['StoreType_B'] = (df['StoreType'] == 'b').astype(int)
-        df['StoreType_C'] = (df['StoreType'] == 'c').astype(int)
-        df['StoreType_D'] = (df['StoreType'] == 'd').astype(int)
-        
-        # Lag features (previous week sales)
-        df['Sales_lag_7'] = df.groupby('Store')['Sales'].shift(7).fillna(0)
-        df['Sales_lag_30'] = df.groupby('Store')['Sales'].shift(30).fillna(0)
-        
-        # Rolling average
-        df['Sales_rolling_7'] = df.groupby('Store')['Sales'].transform(
-            lambda x: x.rolling(7, min_periods=1).mean()
+
+RAW_TRAIN_PATH = "data/raw/train.csv"
+RAW_STORE_PATH = "data/raw/store.csv"
+PROCESSED_PATH = "data/processed/rossmann_prepared.csv"
+
+
+def load_raw_data():
+    print("=" * 60)
+    print("ROSSMANN DATA PIPELINE")
+    print("=" * 60)
+    print("[1/5] Loading data...")
+
+    if not os.path.exists(RAW_TRAIN_PATH):
+        raise FileNotFoundError(f"Missing file: {RAW_TRAIN_PATH}")
+    if not os.path.exists(RAW_STORE_PATH):
+        raise FileNotFoundError(f"Missing file: {RAW_STORE_PATH}")
+
+    train = pd.read_csv(RAW_TRAIN_PATH)
+    store = pd.read_csv(RAW_STORE_PATH)
+
+    print(f"✓ Loaded {len(train):,} train records")
+    print(f"✓ Loaded {len(store):,} store records")
+
+    return train, store
+
+
+def merge_and_clean(train, store):
+    print("[2/5] Merging & cleaning data...")
+
+    # Merge store metadata
+    df = train.merge(store, on="Store", how="left")
+
+    # Parse date
+    df["Date"] = pd.to_datetime(df["Date"])
+
+    # Remove days when stores were closed (Open = 0 or NaN treated as closed)
+    if "Open" in df.columns:
+        df = df[df["Open"].fillna(0) == 1]
+
+    # Handle missing competition distance & promo columns
+    if "CompetitionDistance" in df.columns:
+        df["CompetitionDistance"] = df["CompetitionDistance"].fillna(
+            df["CompetitionDistance"].median()
         )
-        
-        print(f"✓ Created {len([c for c in df.columns if c.startswith('Sales_') or c in ['Year', 'Month', 'DayOfWeek']])} features")
-        return df
-    
-    def select_features(self, df):
-        """Select final features for modeling"""
-        print("[4/5] Selecting features...")
-        
-        # Key columns for time-series forecasting
-        features = ['Date', 'Store', 'Sales', 'Customers', 'Promo', 
-                   'Month', 'DayOfWeek', 'SchoolHoliday', 'Quarter',
-                   'Sales_lag_7', 'Sales_lag_30', 'Sales_rolling_7']
-        
-        df = df[features].dropna()
-        print(f"✓ Selected {len(features)} features")
-        return df
-    
-    def save_data(self, df):
-        """Save processed data"""
-        print("[5/5] Saving processed data...")
-        df.to_csv(self.output_path, index=False)
-        print(f"✓ Saved to {self.output_path}")
-        print(f"✓ Data shape: {df.shape}")
-        print(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
-        return df
-    
-    def run(self):
-        """Execute full pipeline"""
-        print("=" * 60)
-        print("ROSSMANN DATA PIPELINE")
-        print("=" * 60)
-        
-        df = self.load_data()
-        df = self.clean_data(df)
-        df = self.engineer_features(df)
-        df = self.select_features(df)
-        df = self.save_data(df)
-        
-        print("=" * 60)
-        print("✅ PIPELINE COMPLETE!")
-        print("=" * 60)
 
-if __name__ == '__main__':
-    pipeline = RossmannPipeline()
-    pipeline.run()
+    # Some store files have Promo2SinceYear etc.; just fill NAs if present
+    for col in ["Promo2SinceYear", "Promo2SinceWeek", "PromoInterval"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(0 if df[col].dtype != "object" else "None")
+
+    print(f"✓ Cleaned data: {len(df):,} records after filtering closed days")
+    return df
+
+
+def add_time_features(df):
+    print("[3/5] Engineering time features...")
+
+    df["Year"] = df["Date"].dt.year
+    df["Month"] = df["Date"].dt.month
+    df["Day"] = df["Date"].dt.day
+    df["DayOfWeek"] = df["Date"].dt.dayofweek
+    df["WeekOfYear"] = df["Date"].dt.isocalendar().week.astype(int)
+    df["Quarter"] = ((df["Month"] - 1) // 3 + 1).astype(int)
+
+    print("✓ Added basic calendar features")
+    return df
+
+
+def add_lag_features(df, lag_days=(7, 30), rolling_windows=(7,)):
+    print("[4/5] Creating lag / rolling features...")
+
+    df = df.sort_values(["Store", "Date"])
+    for lag in lag_days:
+        df[f"Sales_lag_{lag}"] = (
+            df.groupby("Store")["Sales"].shift(lag)
+        )
+
+    for window in rolling_windows:
+        df[f"Sales_rolling_{window}"] = (
+            df.groupby("Store")["Sales"]
+            .shift(1)
+            .rolling(window=window, min_periods=1)
+            .mean()
+        )
+
+    print(f"✓ Created lag features: {lag_days}")
+    print(f"✓ Created rolling features: {rolling_windows}")
+    return df
+
+
+def select_and_save(df):
+    print("[5/5] Selecting features & saving...")
+
+    # Ensure metadata columns exist (they come from store.csv)
+    # If they don't, fill with default values so the app never breaks.
+    for col, default in [
+        ("StoreType", "a"),
+        ("Assortment", "basic"),
+        ("CompetitionDistance", df["CompetitionDistance"].median() if "CompetitionDistance" in df.columns else 1000),
+    ]:
+        if col not in df.columns:
+            df[col] = default
+
+    # Columns used by the Streamlit app
+    cols_to_keep = [
+        "Date",
+        "Store",
+        "Sales",
+        "Customers",
+        "Promo",
+        "StateHoliday",
+        "SchoolHoliday",
+        "Open",
+
+        # store metadata (for the blue info box)
+        "StoreType",
+        "Assortment",
+        "CompetitionDistance",
+
+        # time features
+        "Year",
+        "Month",
+        "Day",
+        "DayOfWeek",
+        "WeekOfYear",
+        "Quarter",
+
+        # lag / rolling features
+        "Sales_lag_7",
+        "Sales_lag_30",
+        "Sales_rolling_7",
+    ]
+
+    # keep only columns that actually exist (in case something is missing)
+    cols_final = [c for c in cols_to_keep if c in df.columns]
+    df_final = df[cols_final].copy()
+
+    os.makedirs(os.path.dirname(PROCESSED_PATH), exist_ok=True)
+    df_final.to_csv(PROCESSED_PATH, index=False)
+
+    print(f"✓ Saved to {PROCESSED_PATH}")
+    print(f"✓ Data shape: {df_final.shape}")
+    print(f"✓ Date range: {df_final['Date'].min().date()} to {df_final['Date'].max().date()}")
+    print("=" * 60)
+    print("✅ PIPELINE COMPLETE!")
+    print("=" * 60)
+
+
+def main():
+    train, store = load_raw_data()
+    df = merge_and_clean(train, store)
+    df = add_time_features(df)
+    df = add_lag_features(df)
+    select_and_save(df)
+
+
+if __name__ == "__main__":
+    main()
